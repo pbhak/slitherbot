@@ -13,8 +13,6 @@ try {
   const qualityToggle = await driver.findElement(By.id('grq'));
   await nicknameTextbox.sendKeys(nickname);
 
-  // has to be clicked twice to take effect
-  await qualityToggle.click();
   await qualityToggle.click();
 
   await playButton.click();
