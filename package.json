@@ -8,5 +8,9 @@
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "@types/selenium-webdriver": "^4.35.5",
+    "selenium-webdriver": "^4.43.0"
   }
 }
