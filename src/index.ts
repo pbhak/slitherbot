@@ -2,10 +2,12 @@ import { By, Builder, Browser, WebDriver, Origin } from 'selenium-webdriver';
 import type { GameState, Pellet, Snake } from './types';
 
 const ANGLE_OFFSET = 0.02454369260617028;
-const MIN_DISTANCE = 60;
+const MIN_DISTANCE = 40;
+const TARGET_CHANGE_THRESHOLD = 50;
 const LOOP_TIME_MS = 65;
 
 const nickname = 'slither (bot)';
+let currentTarget: Pellet;
 
 const driver = await new Builder().forBrowser(Browser.CHROME).build();
 
@@ -62,7 +64,6 @@ async function getSnake(wait: boolean = true): Promise<Snake> {
     );
   }
 
-  // :heavysob:
   const { id, ang, kill_count, nk, sp, tl, xx, yy } =
     await driver.executeScript<{
       id: number;
@@ -97,7 +98,8 @@ async function moveAtAngle(
     y:
       ((await driver.executeScript('return window.innerHeight')) as number) / 2,
   };
-  const aimAngle = state.snake.angle + 0.4 * normalizeAngle(targetAngle - state.snake.angle);
+  const aimAngle =
+    state.snake.angle + 0.5 * normalizeAngle(targetAngle - state.snake.angle);
   // oo look trig!
   await driver
     .actions({ async: true })
@@ -113,9 +115,7 @@ function getClosestPellet(state: GameState): Pellet | undefined {
   const distanceMap: (Pellet & { distance: number })[] = state.pellets
     .map((pellet: Pellet) => ({
       ...pellet,
-      distance: Math.sqrt(
-        (pellet.x - state.snake.x) ** 2 + (pellet.y - state.snake.y) ** 2,
-      ),
+      distance: distanceBetween(pellet, state.snake),
     }))
     .filter(pellet => pellet.distance > MIN_DISTANCE);
   return distanceMap.reduce((prev, curr) =>
@@ -126,6 +126,10 @@ function getClosestPellet(state: GameState): Pellet | undefined {
 function getAngleToClosestPellet(state: GameState): number | undefined {
   const closestPellet: Pellet | undefined = getClosestPellet(state);
   if (!closestPellet) return undefined;
+  if (!currentTarget) currentTarget = closestPellet;
+  if (distanceBetween(currentTarget, closestPellet) < TARGET_CHANGE_THRESHOLD)
+    return;
+  currentTarget = closestPellet;
   const angle = Math.atan2(
     closestPellet.y - state.snake.y,
     closestPellet.x - state.snake.x,
@@ -136,4 +140,9 @@ function getAngleToClosestPellet(state: GameState): number | undefined {
 
 function normalizeAngle(angle: number): number {
   return Math.atan2(Math.sin(angle), Math.cos(angle));
+}
+
+function distanceBetween(a: Snake | Pellet, b: Snake | Pellet) {
+  console.log(currentTarget);
+  return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 }
