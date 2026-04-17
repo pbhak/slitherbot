@@ -27,3 +27,10 @@ export type Pellet = {
   /** Pellet size */
   size: number;
 };
+
+export type GameState = {
+  /** Current snake object */
+  snake: Snake;
+  /** Currently visible pellets */
+  pellets: Pellet[];
+}
