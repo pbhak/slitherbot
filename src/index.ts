@@ -17,10 +17,9 @@ try {
   await qualityToggle.click();
   await playButton.click();
 
-  console.log(await getPellets(driver));
-
-  await moveAtAngle(driver, Math.PI / 2);
-  setInterval(async () => console.log((await getSnake(driver)).angle), 500);
+  while (true) {
+    await moveAtAngle(driver, await getAngleToClosestPellet(driver));
+  }
 } catch (e) {
   console.log(e);
 } finally {
@@ -28,9 +27,7 @@ try {
 }
 
 async function foodsExist(driver: WebDriver): Promise<boolean> {
-  const isFoodsDefined = await driver.executeScript(
-    "return typeof window.foods !== 'undefined'",
-  );
+  const isFoodsDefined = await driver.executeScript('return !!window.foods');
   if (!isFoodsDefined) return false;
   return await driver.executeScript(
     'return Array.isArray(window.foods) && window.foods.length > 0',
@@ -40,16 +37,36 @@ async function foodsExist(driver: WebDriver): Promise<boolean> {
 async function getPellets(driver: WebDriver): Promise<Pellet[]> {
   await driver.wait(foodsExist);
   return await driver.executeScript(
-    'return window.foods.map(f => ({ id: f.id, x: f.xx, y: f.yy, size: f.sz }))',
+    'return window.foods.filter(Boolean).map(f => ({ id: f.id, x: f.xx, y: f.yy, size: f.sz }))',
   );
+}
+
+async function getClosestPellet(
+  driver: WebDriver,
+): Promise<Pellet | undefined> {
+  const snake: Snake = await getSnake(driver);
+  const pellets: Pellet[] = await getPellets(driver);
+  const distanceMap: number[] = pellets.map((pellet: Pellet) =>
+    Math.sqrt((pellet.x - snake.x) ** 2 + (pellet.y - snake.y) ** 2),
+  );
+  return pellets[distanceMap.indexOf(Math.min(...distanceMap))];
+}
+
+async function getAngleToClosestPellet(driver: WebDriver): Promise<number> {
+  const snake: Snake = await getSnake(driver);
+  const closestPellet: Pellet | undefined = await getClosestPellet(driver);
+  if (!closestPellet) return -1;
+  const angle = Math.atan2(
+    closestPellet.y - snake.y,
+    closestPellet.x - snake.x,
+  );
+  if (angle < 0) return angle + 2 * Math.PI;
+  return angle;
 }
 
 async function getSnake(driver: WebDriver): Promise<Snake> {
   await driver.wait(
-    async () =>
-      await driver.executeScript(
-        "return typeof window.slither !== 'undefined'",
-      ),
+    async () => await driver.executeScript('return !!window.slither'),
   );
 
   // :heavysob:
@@ -80,11 +97,12 @@ async function moveAtAngle(
   driver: WebDriver,
   angleRads: number,
   magnitude: number = 50,
-) {
+): Promise<void> {
   // get viewport center
   const center = {
-    x: await driver.executeScript('return window.innerWidth') as number / 2,
-    y: await driver.executeScript('return window.innerHeight') as number / 2
+    x: ((await driver.executeScript('return window.innerWidth')) as number) / 2,
+    y:
+      ((await driver.executeScript('return window.innerHeight')) as number) / 2,
   };
   // oo look trig!
   await driver
