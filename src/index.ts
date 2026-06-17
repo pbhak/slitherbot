@@ -1,10 +1,13 @@
-import { By, Builder, Browser, WebDriver, Origin } from 'selenium-webdriver';
+import { By, Builder, Browser, Origin } from 'selenium-webdriver';
 import type { GameState, Pellet, Snake } from './types';
 
 const ANGLE_OFFSET = 0.02454369260617028;
 const MIN_DISTANCE = 40;
-const TARGET_CHANGE_THRESHOLD = 50;
+const TARGET_SCORE_SWITCH_MULTIPLIER = 1.25;
+const CLUSTER_RADIUS = 180;
 const LOOP_TIME_MS = 65;
+const MIN_TURN_RATE = 0.35;
+const MAX_TURN_RATE = 0.95;
 
 const nickname = 'slither (bot)';
 let currentTarget: Pellet;
@@ -30,9 +33,9 @@ try {
       snake: await getSnake(false),
       pellets: await getPellets(false),
     };
-    const angleToClosest = getAngleToClosestPellet(currentState);
-    if (!angleToClosest) return;
-    await moveAtAngle(angleToClosest, currentState);
+    const targetPoint = getTargetPoint(currentState);
+    if (!targetPoint) return;
+    await moveToward(targetPoint, currentState);
   }, LOOP_TIME_MS);
 } catch (e) {
   console.log(e);
@@ -55,6 +58,11 @@ async function getPellets(wait: boolean = true): Promise<Pellet[]> {
   return await driver.executeScript(
     'return window.foods.filter(Boolean).map(f => ({ id: f.id, x: f.xx, y: f.yy, size: f.sz }))',
   );
+}
+
+function doesPelletExist(pellet: Pellet, state: GameState) {
+  const pelletIds = state.pellets.map(pellet => pellet.id);
+  return pelletIds.includes(pellet.id);
 }
 
 async function getSnake(wait: boolean = true): Promise<Snake> {
@@ -87,8 +95,8 @@ async function getSnake(wait: boolean = true): Promise<Snake> {
   };
 }
 
-async function moveAtAngle(
-  targetAngle: number,
+async function moveToward(
+  target: Pellet,
   state: GameState,
   magnitude: number = 50,
 ): Promise<void> {
@@ -98,8 +106,18 @@ async function moveAtAngle(
     y:
       ((await driver.executeScript('return window.innerHeight')) as number) / 2,
   };
+  const targetAngle = Math.atan2(
+    target.y - state.snake.y,
+    target.x - state.snake.x,
+  );
+  const distance = distanceBetween(state.snake, target);
+  const turnRate = Math.min(
+    MAX_TURN_RATE,
+    Math.max(MIN_TURN_RATE, 1 - distance / CLUSTER_RADIUS),
+  );
   const aimAngle =
-    state.snake.angle + 0.5 * normalizeAngle(targetAngle - state.snake.angle);
+    state.snake.angle +
+    turnRate * normalizeAngle(targetAngle - state.snake.angle);
   // oo look trig!
   await driver
     .actions({ async: true })
@@ -111,38 +129,50 @@ async function moveAtAngle(
     .perform();
 }
 
-function getClosestPellet(state: GameState): Pellet | undefined {
-  const distanceMap: (Pellet & { distance: number })[] = state.pellets
-    .map((pellet: Pellet) => ({
+function getBestPellet(state: GameState): Pellet | undefined {
+  const scoredPellets = state.pellets
+    .filter(pellet => distanceBetween(pellet, state.snake) > MIN_DISTANCE)
+    .map(pellet => ({
       ...pellet,
-      distance: distanceBetween(pellet, state.snake),
-    }))
-    .filter(pellet => pellet.distance > MIN_DISTANCE);
-  return distanceMap.reduce((prev, curr) =>
-    curr.distance < prev.distance ? curr : prev,
+      score: getPelletScore(pellet, state),
+    }));
+  if (scoredPellets.length === 0) return undefined;
+  return scoredPellets.reduce((prev, curr) =>
+    curr.score > prev.score ? curr : prev,
   );
 }
 
-function getAngleToClosestPellet(state: GameState): number | undefined {
-  const closestPellet: Pellet | undefined = getClosestPellet(state);
-  if (!closestPellet) return undefined;
-  if (!currentTarget) currentTarget = closestPellet;
-  if (distanceBetween(currentTarget, closestPellet) < TARGET_CHANGE_THRESHOLD)
-    return;
-  currentTarget = closestPellet;
-  const angle = Math.atan2(
-    closestPellet.y - state.snake.y,
-    closestPellet.x - state.snake.x,
-  );
-  if (angle < 0) return angle + 2 * Math.PI;
-  return angle;
+function getTargetPoint(state: GameState): Pellet | undefined {
+  const bestPellet: Pellet | undefined = getBestPellet(state);
+  if (!bestPellet) return undefined;
+  if (
+    !currentTarget ||
+    !doesPelletExist(currentTarget, state) ||
+    getPelletScore(bestPellet, state) >
+      getPelletScore(currentTarget, state) * TARGET_SCORE_SWITCH_MULTIPLIER
+  )
+    currentTarget = bestPellet;
+  return currentTarget;
 }
 
 function normalizeAngle(angle: number): number {
   return Math.atan2(Math.sin(angle), Math.cos(angle));
 }
 
+function getPelletScore(pellet: Pellet, state: GameState) {
+  const distance = distanceBetween(state.snake, pellet);
+  const angleToPellet = Math.atan2(
+    pellet.y - state.snake.y,
+    pellet.x - state.snake.x,
+  );
+  const angleDelta = Math.abs(normalizeAngle(angleToPellet - state.snake.angle));
+  const headingMultiplier = Math.max(0.25, 1 - angleDelta / Math.PI);
+  return (
+    (pellet.size * headingMultiplier) /
+    distance
+  );
+}
+
 function distanceBetween(a: Snake | Pellet, b: Snake | Pellet) {
-  console.log(currentTarget);
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 }
