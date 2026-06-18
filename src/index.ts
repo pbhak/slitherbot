@@ -19,10 +19,8 @@ try {
 
   const nicknameTextbox = await driver.findElement(By.id('nick'));
   const playButton = await driver.findElement(By.id('playh'));
-  const qualityToggle = await driver.findElement(By.id('grq'));
 
   await nicknameTextbox.sendKeys(nickname);
-  await qualityToggle.click();
   await playButton.click();
 
   // wait for the snake to exist before starting the game loop
