@@ -1,5 +1,6 @@
 # slitherbot
-![gameplay demo](assets/demo.gif)
+<img src="assets/demo.gif" height=350>
+  
 
 basic bot i made to play [slither.io](slither.io) based on exposed game data through the window object
 
